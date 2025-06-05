@@ -1,173 +1,170 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import type React from "react"
+
+import { useState } from "react"
 import { useFinance } from "@/context/finance-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { DateRangePicker } from "@/components/date-range-picker"
-import { TransactionList } from "@/components/transaction-list"
-import { ArrowDownCircle, ArrowUpCircle, Wallet, PiggyBank } from "lucide-react"
-import { Progress } from "@/components/ui/progress"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 export function Dashboard() {
   const {
-    timeRange,
-    setTimeRange,
-    getFilteredExpenses,
-    getFilteredIncomes,
-    getTotalExpenses,
-    getTotalIncomes,
+    transactions,
+    addTransaction,
+    removeTransaction,
+    getTotalIncome,
+    getTotalExpense,
     getBalance,
-    getSavingsRate,
     formatCurrency,
-    data,
   } = useFinance()
 
-  const [isMounted, setIsMounted] = useState(false)
-  const [dashboardData, setDashboardData] = useState({
-    expenses: [],
-    incomes: [],
-    totalExpenses: 0,
-    totalIncomes: 0,
-    balance: 0,
-    savingsRate: 0,
-    allTransactions: [],
-  })
+  const [description, setDescription] = useState("")
+  const [amount, setAmount] = useState("")
+  const [type, setType] = useState<"income" | "expense">("income")
 
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
 
-  useEffect(() => {
-    if (!isMounted) return
+    if (!description || !amount) return
 
-    try {
-      const expenses = getFilteredExpenses() || []
-      const incomes = getFilteredIncomes() || []
-      const totalExpenses = getTotalExpenses() || 0
-      const totalIncomes = getTotalIncomes() || 0
-      const balance = getBalance() || 0
-      const savingsRate = getSavingsRate() || 0
+    addTransaction({
+      description,
+      amount: Number.parseFloat(amount),
+      type,
+      date: new Date().toISOString().split("T")[0],
+    })
 
-      // Kombiniere alle Transaktionen
-      const allTransactions = [
-        ...incomes.map((income) => ({ ...income, type: "income" })),
-        ...expenses.map((expense) => ({ ...expense, type: "expense" })),
-      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-
-      setDashboardData({
-        expenses,
-        incomes,
-        totalExpenses,
-        totalIncomes,
-        balance,
-        savingsRate,
-        allTransactions,
-      })
-    } catch (error) {
-      console.error("Fehler beim Laden der Dashboard-Daten:", error)
-      setDashboardData({
-        expenses: [],
-        incomes: [],
-        totalExpenses: 0,
-        totalIncomes: 0,
-        balance: 0,
-        savingsRate: 0,
-        allTransactions: [],
-      })
-    }
-  }, [
-    isMounted,
-    timeRange,
-    data,
-    getFilteredExpenses,
-    getFilteredIncomes,
-    getTotalExpenses,
-    getTotalIncomes,
-    getBalance,
-    getSavingsRate,
-  ])
-
-  if (!isMounted) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-muted-foreground">Lade Dashboard...</div>
-      </div>
-    )
+    setDescription("")
+    setAmount("")
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <DateRangePicker timeRange={timeRange} onChange={setTimeRange} />
-      </div>
+      <h1 className="text-3xl font-bold">Dashboard</h1>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* Statistiken */}
+      <div className="grid gap-4 md:grid-cols-3">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Einnahmen</CardTitle>
-            <ArrowUpCircle className="h-4 w-4 text-green-600" />
+          <CardHeader>
+            <CardTitle className="text-green-600">Einnahmen</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(dashboardData.totalIncomes)}</div>
-            <p className="text-xs text-muted-foreground">{dashboardData.incomes.length} Transaktionen</p>
+            <div className="text-2xl font-bold text-green-600">{formatCurrency(getTotalIncome())}</div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ausgaben</CardTitle>
-            <ArrowDownCircle className="h-4 w-4 text-red-600" />
+          <CardHeader>
+            <CardTitle className="text-red-600">Ausgaben</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{formatCurrency(dashboardData.totalExpenses)}</div>
-            <p className="text-xs text-muted-foreground">{dashboardData.expenses.length} Transaktionen</p>
+            <div className="text-2xl font-bold text-red-600">{formatCurrency(getTotalExpense())}</div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Saldo</CardTitle>
-            <Wallet className="h-4 w-4 text-muted-foreground" />
+          <CardHeader>
+            <CardTitle>Saldo</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${dashboardData.balance >= 0 ? "text-green-600" : "text-red-600"}`}>
-              {formatCurrency(dashboardData.balance)}
+            <div className={`text-2xl font-bold ${getBalance() >= 0 ? "text-green-600" : "text-red-600"}`}>
+              {formatCurrency(getBalance())}
             </div>
-            <p className="text-xs text-muted-foreground">{dashboardData.balance >= 0 ? "Überschuss" : "Defizit"}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Sparquote</CardTitle>
-            <PiggyBank className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{dashboardData.savingsRate.toFixed(1)}%</div>
-            <Progress value={Math.max(0, Math.min(100, dashboardData.savingsRate))} className="h-2 mt-2" />
           </CardContent>
         </Card>
       </div>
 
+      {/* Neue Transaktion */}
       <Card>
         <CardHeader>
-          <CardTitle>Letzte Transaktionen</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            {dashboardData.allTransactions.length > 0
-              ? `Die ${Math.min(10, dashboardData.allTransactions.length)} neuesten Transaktionen`
-              : "Noch keine Transaktionen vorhanden"}
-          </p>
+          <CardTitle>Neue Transaktion</CardTitle>
         </CardHeader>
         <CardContent>
-          {dashboardData.allTransactions.length > 0 ? (
-            <TransactionList transactions={dashboardData.allTransactions} limit={10} />
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label htmlFor="description">Beschreibung</Label>
+              <Input
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Beschreibung eingeben"
+                required
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="amount">Betrag</Label>
+              <Input
+                id="amount"
+                type="number"
+                step="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                required
+              />
+            </div>
+
+            <div>
+              <Label>Typ</Label>
+              <div className="flex gap-4 mt-2">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    value="income"
+                    checked={type === "income"}
+                    onChange={(e) => setType(e.target.value as "income" | "expense")}
+                    className="mr-2"
+                  />
+                  Einnahme
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    value="expense"
+                    checked={type === "expense"}
+                    onChange={(e) => setType(e.target.value as "income" | "expense")}
+                    className="mr-2"
+                  />
+                  Ausgabe
+                </label>
+              </div>
+            </div>
+
+            <Button type="submit">Hinzufügen</Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Transaktionsliste */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Transaktionen</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {transactions.length === 0 ? (
+            <p className="text-center text-gray-500 py-4">Noch keine Transaktionen vorhanden</p>
           ) : (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground mb-4">Noch keine Transaktionen vorhanden</p>
-              <p className="text-sm text-muted-foreground">
-                Fügen Sie Ihre ersten Einnahmen oder Ausgaben hinzu, um sie hier zu sehen.
-              </p>
+            <div className="space-y-2">
+              {transactions.map((transaction) => (
+                <div key={transaction.id} className="flex items-center justify-between p-3 border rounded">
+                  <div>
+                    <div className="font-medium">{transaction.description}</div>
+                    <div className="text-sm text-gray-500">{transaction.date}</div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={transaction.type === "income" ? "text-green-600" : "text-red-600"}>
+                      {transaction.type === "income" ? "+" : "-"}
+                      {formatCurrency(transaction.amount)}
+                    </span>
+                    <Button variant="outline" size="sm" onClick={() => removeTransaction(transaction.id)}>
+                      Löschen
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>

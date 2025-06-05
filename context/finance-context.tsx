@@ -110,6 +110,23 @@ interface FinanceContextType {
   exportData: () => string
   importData: (jsonData: string) => void
   resetData: () => void
+
+  // Simple transaction management
+  transactions: Transaction[]
+  addTransaction: (transaction: Omit<Transaction, "id">) => void
+  removeTransaction: (id: string) => void
+  getIncomes: () => Transaction[]
+  getExpenses: () => Transaction[]
+  getTotalIncome: () => number
+  getTotalExpense: () => number
+}
+
+interface Transaction {
+  id: string
+  description: string
+  amount: number
+  type: "income" | "expense"
+  date: string
 }
 
 const defaultData: FinanceData = {
@@ -159,6 +176,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
   })
+  const [transactions, setTransactions] = useState<Transaction[]>([])
 
   // Load data from localStorage on mount
   useEffect(() => {
@@ -181,6 +199,21 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       console.error("Error saving data to localStorage:", error)
     }
   }, [data])
+
+  useEffect(() => {
+    const saved = localStorage.getItem("simple-finance-data")
+    if (saved) {
+      try {
+        setTransactions(JSON.parse(saved))
+      } catch (error) {
+        console.error("Fehler beim Laden:", error)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem("simple-finance-data", JSON.stringify(transactions))
+  }, [transactions])
 
   // Helper function to generate unique IDs
   const generateId = () => Date.now().toString() + Math.random().toString(36).substr(2, 9)
@@ -534,6 +567,34 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem("financeData")
   }, [])
 
+  const addTransaction = (transaction: Omit<Transaction, "id">) => {
+    const newTransaction = {
+      ...transaction,
+      id: Date.now().toString(),
+    }
+    setTransactions((prev) => [...prev, newTransaction])
+  }
+
+  const removeTransaction = (id: string) => {
+    setTransactions((prev) => prev.filter((t) => t.id !== id))
+  }
+
+  const getIncomes = () => {
+    return transactions.filter((t) => t.type === "income")
+  }
+
+  const getExpenses = () => {
+    return transactions.filter((t) => t.type === "expense")
+  }
+
+  const getTotalIncome = () => {
+    return transactions.filter((t) => t.type === "income").reduce((sum, t) => sum + t.amount, 0)
+  }
+
+  const getTotalExpense = () => {
+    return transactions.filter((t) => t.type === "expense").reduce((sum, t) => sum + t.amount, 0)
+  }
+
   const value: FinanceContextType = {
     data,
     timeRange,
@@ -584,10 +645,14 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     // Recurring transactions
     generateRecurringIncomes,
 
-    // Data management
-    exportData,
-    importData,
-    resetData,
+    // Simple transaction management
+    transactions,
+    addTransaction,
+    removeTransaction,
+    getIncomes,
+    getExpenses,
+    getTotalIncome,
+    getTotalExpense,
   }
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>
