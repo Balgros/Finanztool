@@ -8,21 +8,18 @@ interface User {
   id: string
   email: string
   name: string
-  isAdmin: boolean
-  isApproved: boolean
-  createdAt: string
 }
 
 interface AuthContextType {
   user: User | null
   isLoading: boolean
-  login: (email: string, password: string) => Promise<boolean>
-  register: (name: string, email: string, password: string) => Promise<boolean>
+  login: (email: string, password: string) => Promise<void>
+  register: (name: string, email: string, password: string) => Promise<void>
   logout: () => void
-  approveUser: (userId: string) => Promise<boolean>
-  rejectUser: (userId: string) => Promise<boolean>
-  getAllUsers: () => User[]
-  deleteUser: (userId: string) => Promise<boolean>
+  approveUser?: (userId: string) => Promise<boolean>
+  rejectUser?: (userId: string) => Promise<boolean>
+  getAllUsers?: () => User[]
+  deleteUser?: (userId: string) => Promise<boolean>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -57,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Beim ersten Laden prüfen, ob ein Benutzer im localStorage gespeichert ist
-    const storedUser = localStorage.getItem("financeUser")
+    const storedUser = localStorage.getItem("simple-auth-user")
 
     // Stelle sicher, dass die Admin-Benutzer immer existieren
     ensureAdminsExist()
@@ -88,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("financeUsers", JSON.stringify(users))
   }
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string) => {
     setIsLoading(true)
 
     try {
@@ -103,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           variant: "destructive",
         })
         setIsLoading(false)
-        return false
+        throw new Error("Anmeldung fehlgeschlagen")
       }
 
       // Einfacher Passwortvergleich (in einer echten App würde man Hashing verwenden)
@@ -114,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           variant: "destructive",
         })
         setIsLoading(false)
-        return false
+        throw new Error("Anmeldung fehlgeschlagen")
       }
 
       // Prüfen, ob der Benutzer bestätigt wurde (Admin ist immer bestätigt)
@@ -125,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           variant: "destructive",
         })
         setIsLoading(false)
-        return false
+        throw new Error("Anmeldung fehlgeschlagen")
       }
 
       // Benutzer in den State und localStorage setzen
@@ -133,13 +130,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: foundUser.id,
         email: foundUser.email,
         name: foundUser.name,
-        isAdmin: foundUser.isAdmin || false,
-        isApproved: foundUser.isApproved || false,
-        createdAt: foundUser.createdAt,
       }
 
       setUser(loggedInUser)
-      localStorage.setItem("financeUser", JSON.stringify(loggedInUser))
+      localStorage.setItem("simple-auth-user", JSON.stringify(loggedInUser))
 
       toast({
         title: "Erfolgreich angemeldet",
@@ -147,7 +141,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
 
       setIsLoading(false)
-      return true
     } catch (error) {
       console.error("Login error:", error)
       toast({
@@ -156,11 +149,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         variant: "destructive",
       })
       setIsLoading(false)
-      return false
     }
   }
 
-  const register = async (name: string, email: string, password: string): Promise<boolean> => {
+  const register = async (name: string, email: string, password: string) => {
     setIsLoading(true)
 
     try {
@@ -175,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           variant: "destructive",
         })
         setIsLoading(false)
-        return false
+        throw new Error("Registrierung fehlgeschlagen")
       }
 
       // Neuen Benutzer erstellen
@@ -199,7 +191,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
 
       setIsLoading(false)
-      return true
     } catch (error) {
       console.error("Registration error:", error)
       toast({
@@ -208,13 +199,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         variant: "destructive",
       })
       setIsLoading(false)
-      return false
     }
   }
 
   const logout = () => {
     setUser(null)
-    localStorage.removeItem("financeUser")
+    localStorage.removeItem("simple-auth-user")
     router.push("/login")
     toast({
       title: "Abgemeldet",
@@ -310,9 +300,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: u.id,
         email: u.email,
         name: u.name,
-        isAdmin: u.isAdmin || false,
-        isApproved: u.isApproved || false,
-        createdAt: u.createdAt,
       }))
     } catch (error) {
       console.error("Get all users error:", error)
@@ -353,29 +340,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isLoading,
-        login,
-        register,
-        logout,
-        approveUser,
-        rejectUser,
-        getAllUsers,
-        deleteUser,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  )
+  const value = {
+    user,
+    isLoading,
+    login,
+    logout,
+    register,
+    approveUser,
+    rejectUser,
+    getAllUsers,
+    deleteUser,
+  }
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
   const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider")
+  if (!context) {
+    throw new Error("useAuth muss innerhalb eines AuthProviders verwendet werden")
   }
   return context
 }
