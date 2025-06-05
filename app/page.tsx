@@ -3,11 +3,13 @@
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/context/auth-context"
+import { useFinance } from "@/context/finance-context"
+import { MainLayout } from "@/components/main-layout"
 import { Dashboard } from "@/components/dashboard"
-import { Button } from "@/components/ui/button"
 
-export default function HomePage() {
-  const { user, isLoading, logout } = useAuth()
+export default function Home() {
+  const { user, isLoading } = useAuth()
+  const { generateRecurringIncomes } = useFinance()
   const router = useRouter()
 
   useEffect(() => {
@@ -16,35 +18,20 @@ export default function HomePage() {
     }
   }, [user, isLoading, router])
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Wird geladen...</p>
-      </div>
-    )
-  }
+  // Prüfe auf wiederkehrende Transaktionen beim App-Start
+  useEffect(() => {
+    if (user) {
+      generateRecurringIncomes()
+    }
+  }, [user])
 
-  if (!user) {
+  if (isLoading || !user) {
     return null
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b p-4">
-        <div className="container mx-auto flex justify-between items-center">
-          <h1 className="text-xl font-bold">TavaFinance</h1>
-          <div className="flex items-center gap-4">
-            <span>Hallo, {user.name}</span>
-            <Button variant="outline" onClick={logout}>
-              Abmelden
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <main className="container mx-auto p-4">
-        <Dashboard />
-      </main>
-    </div>
+    <MainLayout>
+      <Dashboard />
+    </MainLayout>
   )
 }

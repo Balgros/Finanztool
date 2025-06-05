@@ -1,172 +1,196 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useFinance } from "@/context/finance-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { DateRangePicker } from "@/components/date-range-picker"
+import { TransactionList } from "@/components/transaction-list"
+import { PieChart } from "@/components/charts/pie-chart"
+import { LineChart } from "@/components/charts/line-chart"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ArrowDownCircle, ArrowUpCircle, Wallet, PiggyBank } from "lucide-react"
+import { AccountSummary } from "@/components/account-summary"
+import { Progress } from "@/components/ui/progress"
 
 export function Dashboard() {
   const {
-    transactions,
-    addTransaction,
-    removeTransaction,
-    getTotalIncome,
-    getTotalExpense,
+    timeRange,
+    setTimeRange,
+    getFilteredExpenses,
+    getFilteredIncomes,
+    getTotalExpenses,
+    getTotalIncomes,
     getBalance,
+    getSavingsRate,
+    getExpensesByCategory,
+    getIncomesByCategory,
+    getMonthlyExpenseTrend,
+    getMonthlyIncomeTrend,
     formatCurrency,
+    data,
   } = useFinance()
 
-  const [description, setDescription] = useState("")
-  const [amount, setAmount] = useState("")
-  const [type, setType] = useState<"income" | "expense">("income")
+  const [isMounted, setIsMounted] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  // Ersetze die direkten Variablendeklarationen mit try-catch-Blöcken
+  const [expenses, setExpenses] = useState([])
+  const [incomes, setIncomes] = useState([])
+  const [totalExpenses, setTotalExpenses] = useState(0)
+  const [totalIncomes, setTotalIncomes] = useState(0)
+  const [balance, setBalance] = useState(0)
+  const [savingsRate, setSavingsRate] = useState(0)
+  const [monthlyExpenseTrend, setMonthlyExpenseTrend] = useState([])
+  const [monthlyIncomeTrend, setMonthlyIncomeTrend] = useState([])
 
-    if (!description || !amount) return
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
-    addTransaction({
-      description,
-      amount: Number.parseFloat(amount),
-      type,
-      date: new Date().toISOString().split("T")[0],
-    })
+  useEffect(() => {
+    try {
+      setExpenses(getFilteredExpenses())
+      setIncomes(getFilteredIncomes())
+      setTotalExpenses(getTotalExpenses())
+      setTotalIncomes(getTotalIncomes())
+      setBalance(getBalance())
+      setSavingsRate(getSavingsRate())
+      setMonthlyExpenseTrend(getMonthlyExpenseTrend())
+      setMonthlyIncomeTrend(getMonthlyIncomeTrend())
+    } catch (error) {
+      console.error("Fehler beim Berechnen der Dashboard-Daten:", error)
+    }
+  }, [
+    timeRange,
+    data,
+    getFilteredExpenses,
+    getFilteredIncomes,
+    getTotalExpenses,
+    getTotalIncomes,
+    getBalance,
+    getSavingsRate,
+    getMonthlyExpenseTrend,
+    getMonthlyIncomeTrend,
+  ])
 
-    setDescription("")
-    setAmount("")
+  if (!isMounted) {
+    return null
   }
+
+  const latestTransactions = [...expenses, ...incomes]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 5)
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Dashboard</h1>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <DateRangePicker timeRange={timeRange} onChange={setTimeRange} />
+      </div>
 
-      {/* Statistiken */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardHeader>
-            <CardTitle className="text-green-600">Einnahmen</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Einnahmen</CardTitle>
+            <ArrowUpCircle className="h-4 w-4 income-text" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(getTotalIncome())}</div>
+            <div className="text-2xl font-bold income-text">{formatCurrency(totalIncomes)}</div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader>
-            <CardTitle className="text-red-600">Ausgaben</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Ausgaben</CardTitle>
+            <ArrowDownCircle className="h-4 w-4 expense-text" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{formatCurrency(getTotalExpense())}</div>
+            <div className="text-2xl font-bold expense-text">{formatCurrency(totalExpenses)}</div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader>
-            <CardTitle>Saldo</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Saldo</CardTitle>
+            <Wallet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${getBalance() >= 0 ? "text-green-600" : "text-red-600"}`}>
-              {formatCurrency(getBalance())}
+            <div className={`text-2xl font-bold ${balance >= 0 ? "income-text" : "expense-text"}`}>
+              {formatCurrency(balance)}
             </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Sparquote</CardTitle>
+            <PiggyBank className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{savingsRate.toFixed(1)}%</div>
+            <Progress value={savingsRate} className="h-2 mt-2" />
           </CardContent>
         </Card>
       </div>
 
-      {/* Neue Transaktion */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="col-span-1 md:col-span-2 lg:col-span-1">
+          <CardHeader>
+            <CardTitle>Kontoübersicht</CardTitle>
+          </CardHeader>
+          <CardContent className="px-2">
+            <AccountSummary />
+          </CardContent>
+        </Card>
+        <Card className="col-span-1 md:col-span-2">
+          <CardHeader>
+            <CardTitle>Einnahmen vs. Ausgaben (6 Monate)</CardTitle>
+          </CardHeader>
+          <CardContent className="h-80">
+            <LineChart
+              incomeData={monthlyIncomeTrend.map((item) => ({ label: item.month, value: item.amount }))}
+              expenseData={monthlyExpenseTrend.map((item) => ({ label: item.month, value: item.amount }))}
+            />
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="col-span-1">
+          <CardHeader>
+            <CardTitle>Ausgaben nach Kategorien</CardTitle>
+          </CardHeader>
+          <CardContent className="h-80">
+            <PieChart data={getExpensesByCategory()} />
+          </CardContent>
+        </Card>
+        <Card className="col-span-1">
+          <CardHeader>
+            <CardTitle>Einnahmen nach Kategorien</CardTitle>
+          </CardHeader>
+          <CardContent className="h-80">
+            <PieChart data={getIncomesByCategory()} />
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>Neue Transaktion</CardTitle>
+          <CardTitle>Letzte Transaktionen</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Label htmlFor="description">Beschreibung</Label>
-              <Input
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Beschreibung eingeben"
-                required
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="amount">Betrag</Label>
-              <Input
-                id="amount"
-                type="number"
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                required
-              />
-            </div>
-
-            <div>
-              <Label>Typ</Label>
-              <div className="flex gap-4 mt-2">
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    value="income"
-                    checked={type === "income"}
-                    onChange={(e) => setType(e.target.value as "income" | "expense")}
-                    className="mr-2"
-                  />
-                  Einnahme
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    value="expense"
-                    checked={type === "expense"}
-                    onChange={(e) => setType(e.target.value as "income" | "expense")}
-                    className="mr-2"
-                  />
-                  Ausgabe
-                </label>
-              </div>
-            </div>
-
-            <Button type="submit">Hinzufügen</Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Transaktionsliste */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Transaktionen</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {transactions.length === 0 ? (
-            <p className="text-center text-gray-500 py-4">Noch keine Transaktionen vorhanden</p>
-          ) : (
-            <div className="space-y-2">
-              {transactions.map((transaction) => (
-                <div key={transaction.id} className="flex items-center justify-between p-3 border rounded">
-                  <div>
-                    <div className="font-medium">{transaction.description}</div>
-                    <div className="text-sm text-gray-500">{transaction.date}</div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={transaction.type === "income" ? "text-green-600" : "text-red-600"}>
-                      {transaction.type === "income" ? "+" : "-"}
-                      {formatCurrency(transaction.amount)}
-                    </span>
-                    <Button variant="outline" size="sm" onClick={() => removeTransaction(transaction.id)}>
-                      Löschen
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <Tabs defaultValue="all">
+            <TabsList>
+              <TabsTrigger value="all">Alle</TabsTrigger>
+              <TabsTrigger value="expenses">Ausgaben</TabsTrigger>
+              <TabsTrigger value="incomes">Einnahmen</TabsTrigger>
+            </TabsList>
+            <TabsContent value="all">
+              <TransactionList transactions={latestTransactions} limit={5} />
+            </TabsContent>
+            <TabsContent value="expenses">
+              <TransactionList transactions={expenses} limit={5} />
+            </TabsContent>
+            <TabsContent value="incomes">
+              <TransactionList transactions={incomes} limit={5} />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>
