@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+
+    /* Custom colors */
+    --income: 142.1 76.2% 36.3%;
+    --expense: 0 84.2% 60.2%;
+    --neutral: 215 25% 27%;
+    --savings: 48 96% 53%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+
+    /* Custom colors in dark mode */
+    --income: 142.1 70.6% 45.3%;
+    --expense: 0 70.8% 50.6%;
+    --neutral: 215 25% 65%;
+    --savings: 48 96% 53%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+.income-text {
+  @apply text-[hsl(var(--income))];
+}
+
+.expense-text {
+  @apply text-[hsl(var(--expense))];
+}
+
+.income-bg {
+  @apply bg-[hsl(var(--income))];
+}
+
+.expense-bg {
+  @apply bg-[hsl(var(--expense))];
+}
+
+.savings-bg {
+  @apply bg-[hsl(var(--savings))];
+}
+
+.neutral-bg {
+  @apply bg-[hsl(var(--neutral))];
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.grid-auto-rows-card {
+  grid-auto-rows: minmax(180px, auto);
+}
+
+/* Füge eine sanfte Feder-Animation für den Dark Mode Slider hinzu */
+@keyframes spring {
+  0% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(1.1);
+  }
+  40% {
+    transform: translateX(0.9);
+  }
+  60% {
+    transform: translateX(1.03);
+  }
+  80% {
+    transform: translateX(0.97);
+  }
+  100% {
+    transform: translateX(1);
+  }
+}
+
+.ease-spring {
+  animation: spring 0.5s ease-out;
+}
