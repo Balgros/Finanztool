@@ -6,7 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/context/auth-context"
 import { FinanceProvider } from "@/context/finance-context"
 import { Toaster } from "@/components/ui/toaster"
-import { MainLayout } from "@/components/main-layout"
+import MainLayout from "@/components/main-layout"
 
 const inter = Inter({ subsets: ["latin"] })
 

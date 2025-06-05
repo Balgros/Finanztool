@@ -21,6 +21,7 @@ interface AuthContextType {
   rejectUser?: (userId: string) => Promise<boolean>
   getAllUsers?: () => User[] // Typ angepasst
   deleteUser?: (userId: string) => Promise<boolean>
+  updateUserByAdmin: (userId: string, data: Partial<Omit<User, "id" | "isAdmin" | "password">>) => Promise<boolean> // isAdmin und password sollten nicht direkt änderbar sein
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -257,7 +258,96 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const value = { user, isLoading, login, register, logout, approveUser, rejectUser, getAllUsers, deleteUser }
+  const updateUserByAdmin = async (
+    userId: string,
+    data: Partial<Omit<User, "id" | "isAdmin" | "password">>,
+  ): Promise<boolean> => {
+    if (!user?.isAdmin) {
+      toast({ title: "Fehler", description: "Keine Adminrechte.", variant: "destructive" })
+      return false
+    }
+    // Admins sollten andere Admins nicht bearbeiten können, um Konflikte zu vermeiden oder sich selbst.
+    // Auch der eigene Account sollte über die normale Einstellungsseite bearbeitet werden.
+    const users = getUsersFromStorage()
+    const userToEditIndex = users.findIndex((u: any) => u.id === userId)
+
+    if (userToEditIndex === -1) {
+      toast({ title: "Fehler", description: "Benutzer nicht gefunden.", variant: "destructive" })
+      return false
+    }
+
+    if (users[userToEditIndex].isAdmin && users[userToEditIndex].id !== user.id) {
+      toast({
+        title: "Fehler",
+        description: "Admin-Profile können hier nicht bearbeitet werden.",
+        variant: "destructive",
+      })
+      return false
+    }
+    if (users[userToEditIndex].id === user.id && users[userToEditIndex].isAdmin) {
+      toast({
+        title: "Hinweis",
+        description: "Eigene Admin-Daten bitte über 'Einstellungen' ändern.",
+        variant: "default",
+      })
+      return false
+    }
+
+    // Nur erlaubte Felder aktualisieren (z.B. Name, Email)
+    // Passwortänderungen sollten einen separaten, sichereren Prozess haben.
+    // isApproved und isAdmin werden über approveUser/rejectUser bzw. spezifische Admin-Management-Funktionen gesteuert.
+    const allowedUpdates: Partial<User> = {}
+    if (data.name !== undefined) allowedUpdates.name = data.name
+    if (data.email !== undefined) {
+      // Prüfen ob E-Mail bereits existiert (außer für den aktuellen Benutzer)
+      if (users.some((u: any) => u.email === data.email && u.id !== userId)) {
+        toast({
+          title: "Fehler",
+          description: "Diese E-Mail-Adresse wird bereits von einem anderen Konto verwendet.",
+          variant: "destructive",
+        })
+        return false
+      }
+      allowedUpdates.email = data.email
+    }
+
+    if (Object.keys(allowedUpdates).length === 0) {
+      toast({ title: "Hinweis", description: "Keine änderbaren Daten übermittelt.", variant: "default" })
+      return false
+    }
+
+    try {
+      users[userToEditIndex] = { ...users[userToEditIndex], ...allowedUpdates }
+      saveUsersToStorage(users)
+
+      // Wenn der bearbeitete Benutzer der aktuell eingeloggte Benutzer ist (z.B. Admin bearbeitet eigenen Nicht-Admin Account)
+      // und dieser NICHT der Admin selbst ist, der die Aktion ausführt,
+      // dann muss ggf. der localStored 'simple-auth-user' aktualisiert werden, falls dieser betroffen ist.
+      // Dies ist aber ein Edge-Case, da Admins meist andere User bearbeiten.
+      // Wichtiger: Wenn ein Admin seinen *eigenen* Account über das Admin-Panel bearbeiten würde (was wir oben einschränken),
+      // müsste der 'simple-auth-user' aktualisiert werden.
+
+      toast({ title: "Erfolg", description: `Benutzer ${users[userToEditIndex].name} aktualisiert.` })
+      return true
+    } catch (e) {
+      console.error("Update user error:", e)
+      toast({ title: "Fehler", description: "Benutzer konnte nicht aktualisiert werden.", variant: "destructive" })
+      return false
+    }
+  }
+
+  const value = {
+    user,
+    isLoading,
+    login,
+    register,
+    logout,
+    approveUser,
+    rejectUser,
+    getAllUsers,
+    deleteUser,
+    updateUserByAdmin,
+  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
