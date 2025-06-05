@@ -1,10 +1,6 @@
-import { MainLayout } from "@/components/main-layout"
+"use client"
 import { AccountManager } from "@/components/account-manager"
 
-export default function AccountsPage() {
-  return (
-    <MainLayout>
-      <AccountManager />
-    </MainLayout>
-  )
+export default function KontenPage() {
+  return <AccountManager />
 }

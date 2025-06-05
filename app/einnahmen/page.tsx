@@ -1,10 +1,6 @@
-import { MainLayout } from "@/components/main-layout"
+"use client"
 import { IncomeManager } from "@/components/income-manager"
 
-export default function IncomePage() {
-  return (
-    <MainLayout>
-      <IncomeManager />
-    </MainLayout>
-  )
+export default function EinnahmenPage() {
+  return <IncomeManager />
 }

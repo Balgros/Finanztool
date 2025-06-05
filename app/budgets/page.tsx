@@ -1,10 +1,6 @@
-import { MainLayout } from "@/components/main-layout"
+"use client"
 import { BudgetManager } from "@/components/budget-manager"
 
 export default function BudgetsPage() {
-  return (
-    <MainLayout>
-      <BudgetManager />
-    </MainLayout>
-  )
+  return <BudgetManager />
 }

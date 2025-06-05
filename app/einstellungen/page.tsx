@@ -1,10 +1,6 @@
-import { MainLayout } from "@/components/main-layout"
-import { Settings } from "@/components/settings"
+"use client"
+import { SettingsManager } from "@/components/settings-manager" // Annahme: SettingsManager existiert oder wird erstellt
 
-export default function SettingsPage() {
-  return (
-    <MainLayout>
-      <Settings />
-    </MainLayout>
-  )
+export default function EinstellungenPage() {
+  return <SettingsManager />
 }

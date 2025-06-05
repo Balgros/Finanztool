@@ -1,10 +1,6 @@
-import { MainLayout } from "@/components/main-layout"
+"use client"
 import { CategoryManager } from "@/components/category-manager"
 
-export default function CategoriesPage() {
-  return (
-    <MainLayout>
-      <CategoryManager />
-    </MainLayout>
-  )
+export default function KategorienPage() {
+  return <CategoryManager />
 }

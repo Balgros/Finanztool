@@ -8,6 +8,7 @@ interface User {
   id: string
   email: string
   name: string
+  isAdmin?: boolean // isAdmin hinzugefügt
 }
 
 interface AuthContextType {
@@ -18,31 +19,28 @@ interface AuthContextType {
   logout: () => void
   approveUser?: (userId: string) => Promise<boolean>
   rejectUser?: (userId: string) => Promise<boolean>
-  getAllUsers?: () => User[]
+  getAllUsers?: () => User[] // Typ angepasst
   deleteUser?: (userId: string) => Promise<boolean>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Admin-Konten, die immer existieren sollen
-const ADMIN_USERS = [
+const ADMIN_USERS_CONFIG = [
   {
     id: "admin-1",
     email: "eser.tavares@gmail.com",
-    name: "Admin",
-    password: "qwer-1234", // In einer echten App würde das Passwort gehasht sein
+    name: "Admin Eser", // Name geändert für Klarheit
+    password: "qwer-1234",
     isAdmin: true,
     isApproved: true,
-    createdAt: new Date().toISOString(),
   },
   {
     id: "admin-2",
     email: "Mastrangelo.mariarosa04@gmail.com",
-    name: "Maria Rosa",
-    password: "Eserichliebedich100%", // In einer echten App würde das Passwort gehasht sein
+    name: "Admin Maria", // Name geändert für Klarheit
+    password: "Eserichliebedich100%",
     isAdmin: true,
     isApproved: true,
-    createdAt: new Date().toISOString(),
   },
 ]
 
@@ -52,152 +50,131 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast()
   const router = useRouter()
 
-  useEffect(() => {
-    // Beim ersten Laden prüfen, ob ein Benutzer im localStorage gespeichert ist
-    const storedUser = localStorage.getItem("simple-auth-user")
+  const getUsersFromStorage = () => {
+    try {
+      return JSON.parse(localStorage.getItem("financeUsers") || "[]")
+    } catch (e) {
+      return []
+    }
+  }
 
-    // Stelle sicher, dass die Admin-Benutzer immer existieren
+  const saveUsersToStorage = (users: any[]) => {
+    localStorage.setItem("financeUsers", JSON.stringify(users))
+  }
+
+  useEffect(() => {
+    const ensureAdminsExist = () => {
+      const users = getUsersFromStorage()
+      let adminsChanged = false
+      for (const adminConfig of ADMIN_USERS_CONFIG) {
+        const existingAdmin = users.find((u: any) => u.email === adminConfig.email)
+        if (!existingAdmin) {
+          users.push({ ...adminConfig, createdAt: new Date().toISOString() })
+          adminsChanged = true
+        } else if (!existingAdmin.isAdmin || !existingAdmin.isApproved) {
+          // Ensure admin flags are correctly set if user exists
+          existingAdmin.isAdmin = true
+          existingAdmin.isApproved = true
+          adminsChanged = true
+        }
+      }
+      if (adminsChanged) {
+        saveUsersToStorage(users)
+      }
+    }
+
     ensureAdminsExist()
 
+    const storedUser = localStorage.getItem("simple-auth-user")
     if (storedUser) {
       try {
-        setUser(JSON.parse(storedUser))
+        const parsedUser: User = JSON.parse(storedUser)
+        // Verify if this user still exists and is valid (especially admin status)
+        const allUsers = getUsersFromStorage()
+        const validUser = allUsers.find((u: any) => u.id === parsedUser.id)
+        if (validUser) {
+          setUser({ ...parsedUser, isAdmin: validUser.isAdmin }) // Ensure isAdmin is fresh
+        } else {
+          localStorage.removeItem("simple-auth-user") // Stale user
+        }
       } catch (error) {
         console.error("Failed to parse stored user:", error)
+        localStorage.removeItem("simple-auth-user")
       }
     }
     setIsLoading(false)
   }, [])
 
-  // Stellt sicher, dass die Admin-Benutzer immer existieren
-  const ensureAdminsExist = () => {
-    const users = JSON.parse(localStorage.getItem("financeUsers") || "[]")
-
-    // Für jeden Admin-Benutzer prüfen, ob er bereits existiert
-    for (const adminUser of ADMIN_USERS) {
-      const adminExists = users.some((u: any) => u.email === adminUser.email)
-
-      if (!adminExists) {
-        users.push(adminUser)
-      }
-    }
-
-    localStorage.setItem("financeUsers", JSON.stringify(users))
-  }
-
   const login = async (email: string, password: string) => {
     setIsLoading(true)
-
     try {
-      // In einer echten App würde hier eine API-Anfrage stattfinden
-      const users = JSON.parse(localStorage.getItem("financeUsers") || "[]")
+      const users = getUsersFromStorage()
       const foundUser = users.find((u: any) => u.email === email)
 
       if (!foundUser) {
-        toast({
-          title: "Fehler bei der Anmeldung",
-          description: "Benutzer nicht gefunden",
-          variant: "destructive",
-        })
+        toast({ title: "Fehler", description: "Benutzer nicht gefunden.", variant: "destructive" })
         setIsLoading(false)
-        throw new Error("Anmeldung fehlgeschlagen")
+        return
       }
-
-      // Einfacher Passwortvergleich (in einer echten App würde man Hashing verwenden)
       if (foundUser.password !== password) {
-        toast({
-          title: "Fehler bei der Anmeldung",
-          description: "Falsches Passwort",
-          variant: "destructive",
-        })
+        toast({ title: "Fehler", description: "Falsches Passwort.", variant: "destructive" })
         setIsLoading(false)
-        throw new Error("Anmeldung fehlgeschlagen")
+        return
       }
-
-      // Prüfen, ob der Benutzer bestätigt wurde (Admin ist immer bestätigt)
-      if (!foundUser.isApproved && !foundUser.isAdmin) {
+      if (!foundUser.isApproved) {
         toast({
           title: "Konto nicht bestätigt",
-          description: "Dein Konto wurde noch nicht vom Administrator bestätigt.",
+          description: "Dein Konto wartet auf Bestätigung.",
           variant: "destructive",
         })
         setIsLoading(false)
-        throw new Error("Anmeldung fehlgeschlagen")
+        return
       }
 
-      // Benutzer in den State und localStorage setzen
-      const loggedInUser = {
+      const loggedInUser: User = {
         id: foundUser.id,
         email: foundUser.email,
         name: foundUser.name,
+        isAdmin: foundUser.isAdmin,
       }
-
       setUser(loggedInUser)
       localStorage.setItem("simple-auth-user", JSON.stringify(loggedInUser))
-
-      toast({
-        title: "Erfolgreich angemeldet",
-        description: `Willkommen zurück, ${foundUser.name}!`,
-      })
-
-      setIsLoading(false)
+      toast({ title: "Angemeldet", description: `Willkommen, ${foundUser.name}!` })
+      router.push("/")
     } catch (error) {
       console.error("Login error:", error)
-      toast({
-        title: "Fehler bei der Anmeldung",
-        description: "Ein unerwarteter Fehler ist aufgetreten",
-        variant: "destructive",
-      })
+      toast({ title: "Fehler", description: "Anmeldung fehlgeschlagen.", variant: "destructive" })
+    } finally {
       setIsLoading(false)
     }
   }
 
   const register = async (name: string, email: string, password: string) => {
     setIsLoading(true)
-
     try {
-      // In einer echten App würde hier eine API-Anfrage stattfinden
-      const users = JSON.parse(localStorage.getItem("financeUsers") || "[]")
-
-      // Prüfen, ob die E-Mail-Adresse bereits verwendet wird
+      const users = getUsersFromStorage()
       if (users.some((u: any) => u.email === email)) {
-        toast({
-          title: "Fehler bei der Registrierung",
-          description: "Diese E-Mail-Adresse wird bereits verwendet",
-          variant: "destructive",
-        })
+        toast({ title: "Fehler", description: "E-Mail bereits registriert.", variant: "destructive" })
         setIsLoading(false)
-        throw new Error("Registrierung fehlgeschlagen")
+        return
       }
-
-      // Neuen Benutzer erstellen
       const newUser = {
         id: crypto.randomUUID(),
         name,
         email,
-        password, // In einer echten App würde man das Passwort hashen
+        password,
         isAdmin: false,
-        isApproved: false, // Standardmäßig nicht bestätigt
+        isApproved: false,
         createdAt: new Date().toISOString(),
       }
-
-      // Benutzer speichern
       users.push(newUser)
-      localStorage.setItem("financeUsers", JSON.stringify(users))
-
-      toast({
-        title: "Registrierung erfolgreich",
-        description: "Dein Konto wurde erstellt und wartet auf Bestätigung durch einen Administrator.",
-      })
-
-      setIsLoading(false)
+      saveUsersToStorage(users)
+      toast({ title: "Registrierung erfolgreich", description: "Dein Konto wartet auf Bestätigung." })
+      router.push("/login")
     } catch (error) {
       console.error("Registration error:", error)
-      toast({
-        title: "Fehler bei der Registrierung",
-        description: "Ein unerwarteter Fehler ist aufgetreten",
-        variant: "destructive",
-      })
+      toast({ title: "Fehler", description: "Registrierung fehlgeschlagen.", variant: "destructive" })
+    } finally {
       setIsLoading(false)
     }
   }
@@ -206,151 +183,81 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
     localStorage.removeItem("simple-auth-user")
     router.push("/login")
-    toast({
-      title: "Abgemeldet",
-      description: "Du wurdest erfolgreich abgemeldet",
-    })
+    toast({ title: "Abgemeldet", description: "Du wurdest erfolgreich abgemeldet." })
   }
 
-  // Admin-Funktionen
   const approveUser = async (userId: string): Promise<boolean> => {
     if (!user?.isAdmin) {
-      toast({
-        title: "Zugriff verweigert",
-        description: "Du hast keine Berechtigung, diese Aktion durchzuführen",
-        variant: "destructive",
-      })
+      toast({ title: "Fehler", description: "Keine Adminrechte.", variant: "destructive" })
       return false
     }
-
     try {
-      const users = JSON.parse(localStorage.getItem("financeUsers") || "[]")
-      const updatedUsers = users.map((u: any) => {
-        if (u.id === userId) {
-          return { ...u, isApproved: true }
-        }
-        return u
-      })
-
-      localStorage.setItem("financeUsers", JSON.stringify(updatedUsers))
-
-      toast({
-        title: "Benutzer bestätigt",
-        description: "Der Benutzer wurde erfolgreich bestätigt",
-      })
-
+      const users = getUsersFromStorage()
+      const userIndex = users.findIndex((u: any) => u.id === userId)
+      if (userIndex === -1) return false
+      users[userIndex].isApproved = true
+      saveUsersToStorage(users)
+      toast({ title: "Erfolg", description: "Benutzer bestätigt." })
       return true
-    } catch (error) {
-      console.error("Approve user error:", error)
-      toast({
-        title: "Fehler",
-        description: "Ein Fehler ist aufgetreten",
-        variant: "destructive",
-      })
+    } catch (e) {
       return false
     }
   }
 
   const rejectUser = async (userId: string): Promise<boolean> => {
     if (!user?.isAdmin) {
-      toast({
-        title: "Zugriff verweigert",
-        description: "Du hast keine Berechtigung, diese Aktion durchzuführen",
-        variant: "destructive",
-      })
+      toast({ title: "Fehler", description: "Keine Adminrechte.", variant: "destructive" })
       return false
     }
-
     try {
-      const users = JSON.parse(localStorage.getItem("financeUsers") || "[]")
-      const updatedUsers = users.map((u: any) => {
-        if (u.id === userId) {
-          return { ...u, isApproved: false }
-        }
-        return u
-      })
-
-      localStorage.setItem("financeUsers", JSON.stringify(updatedUsers))
-
-      toast({
-        title: "Benutzer abgelehnt",
-        description: "Der Benutzer wurde erfolgreich abgelehnt",
-      })
-
+      const users = getUsersFromStorage()
+      const userIndex = users.findIndex((u: any) => u.id === userId)
+      if (userIndex === -1) return false
+      users[userIndex].isApproved = false // Set to false, or could delete if reject means remove pending
+      saveUsersToStorage(users)
+      toast({ title: "Erfolg", description: "Benutzerstatus geändert (nicht bestätigt)." })
       return true
-    } catch (error) {
-      console.error("Reject user error:", error)
-      toast({
-        title: "Fehler",
-        description: "Ein Fehler ist aufgetreten",
-        variant: "destructive",
-      })
+    } catch (e) {
       return false
     }
   }
 
   const getAllUsers = (): User[] => {
-    if (!user?.isAdmin) {
-      return []
-    }
-
-    try {
-      const users = JSON.parse(localStorage.getItem("financeUsers") || "[]")
-      return users.map((u: any) => ({
-        id: u.id,
-        email: u.email,
-        name: u.name,
-      }))
-    } catch (error) {
-      console.error("Get all users error:", error)
-      return []
-    }
+    if (!user?.isAdmin) return []
+    const users = getUsersFromStorage()
+    return users.map((u: any) => ({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      isAdmin: u.isAdmin,
+      isApproved: u.isApproved,
+    })) // include isApproved
   }
 
   const deleteUser = async (userId: string): Promise<boolean> => {
     if (!user?.isAdmin) {
-      toast({
-        title: "Zugriff verweigert",
-        description: "Du hast keine Berechtigung, diese Aktion durchzuführen",
-        variant: "destructive",
-      })
+      toast({ title: "Fehler", description: "Keine Adminrechte.", variant: "destructive" })
+      return false
+    }
+    // Prevent admin from deleting themselves or other admins for simplicity here
+    const userToDelete = getUsersFromStorage().find((u: any) => u.id === userId)
+    if (userToDelete && userToDelete.isAdmin) {
+      toast({ title: "Fehler", description: "Admins können nicht gelöscht werden.", variant: "destructive" })
       return false
     }
 
     try {
-      const users = JSON.parse(localStorage.getItem("financeUsers") || "[]")
-      const updatedUsers = users.filter((u: any) => u.id !== userId)
-
-      localStorage.setItem("financeUsers", JSON.stringify(updatedUsers))
-
-      toast({
-        title: "Benutzer gelöscht",
-        description: "Der Benutzer wurde erfolgreich gelöscht",
-      })
-
+      let users = getUsersFromStorage()
+      users = users.filter((u: any) => u.id !== userId)
+      saveUsersToStorage(users)
+      toast({ title: "Erfolg", description: "Benutzer gelöscht." })
       return true
-    } catch (error) {
-      console.error("Delete user error:", error)
-      toast({
-        title: "Fehler",
-        description: "Ein Fehler ist aufgetreten",
-        variant: "destructive",
-      })
+    } catch (e) {
       return false
     }
   }
 
-  const value = {
-    user,
-    isLoading,
-    login,
-    logout,
-    register,
-    approveUser,
-    rejectUser,
-    getAllUsers,
-    deleteUser,
-  }
+  const value = { user, isLoading, login, register, logout, approveUser, rejectUser, getAllUsers, deleteUser }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

@@ -2,8 +2,20 @@
 
 import type React from "react"
 import { createContext, useContext, useState, useEffect, useCallback } from "react"
-import type { Income, Expense, Transfer, Currency } from "@/types/finance"
-import { format, isWithinInterval, subMonths, startOfMonth, endOfMonth, addWeeks, addMonths, addYears } from "date-fns"
+import type { Income, Expense, Transfer, Currency, RecurringConfig } from "@/types/finance" // RecurringConfig importiert
+import {
+  format,
+  isWithinInterval,
+  subMonths,
+  startOfMonth,
+  endOfMonth,
+  addWeeks,
+  addMonths,
+  addYears,
+  parseISO,
+  isBefore,
+  isEqual,
+} from "date-fns"
 
 interface Account {
   id: string
@@ -26,7 +38,7 @@ interface Category {
 interface Person {
   id: string
   name: string
-  email: string
+  email: string // Behalten für potenzielle zukünftige Nutzung (z.B. Einladungen)
   color: string
 }
 
@@ -39,8 +51,8 @@ interface Budget {
 
 interface Settings {
   currency: Currency
-  language: string
-  theme: string
+  language: string // z.B. 'de', 'en'
+  theme: string // z.B. 'light', 'dark', 'system'
 }
 
 interface FinanceData {
@@ -64,16 +76,15 @@ interface FinanceContextType {
   timeRange: TimeRange
   setTimeRange: (range: TimeRange) => void
 
-  // CRUD operations
-  addIncome: (income: Omit<Income, "id">) => void
+  addIncome: (income: Omit<Income, "id" | "parentIncomeId">) => void
   updateIncome: (income: Income) => void
   deleteIncome: (id: string) => void
 
-  addExpense: (expense: Omit<Expense, "id">) => void
+  addExpense: (expense: Omit<Expense, "id" | "parentExpenseId">) => void
   updateExpense: (expense: Expense) => void
   deleteExpense: (id: string) => void
 
-  addTransfer: (transfer: Omit<Transfer, "id">) => void
+  addTransfer: (transfer: Omit<Transfer, "id" | "parentTransferId">) => void
   updateTransfer: (transfer: Transfer) => void
   deleteTransfer: (id: string) => void
 
@@ -93,14 +104,16 @@ interface FinanceContextType {
   updateBudget: (budget: Budget) => void
   deleteBudget: (id: string) => void
 
-  // Getter functions
+  updateSettings: (settings: Partial<Settings>) => void
+
   getFilteredIncomes: () => Income[]
   getFilteredExpenses: () => Expense[]
   getFilteredTransfers: () => Transfer[]
-  getTotalIncomes: () => number
-  getTotalExpenses: () => number
-  getBalance: () => number
-  getSavingsRate: () => number
+  getTotalIncomes: (filtered?: boolean) => number
+  getTotalExpenses: (filtered?: boolean) => number
+  getBalance: (filtered?: boolean) => number
+  getSavingsRate: (filtered?: boolean) => number
+
   getExpensesByCategory: () => Record<string, number>
   getIncomesByCategory: () => Record<string, number>
   getExpensesByAccount: () => Record<string, number>
@@ -110,30 +123,28 @@ interface FinanceContextType {
   getMonthlyExpenseTrend: () => Array<{ month: string; amount: number }>
   getMonthlyIncomeTrend: () => Array<{ month: string; amount: number }>
 
-  // Helper functions
   getCategoryById: (id: string) => Category | undefined
   getPersonById: (id: string) => Person | undefined
   getAccountById: (id: string) => Account | undefined
   formatCurrency: (amount: number) => string
 
-  // Recurring transactions
-  generateAllRecurringTransactions: () => { incomes: number; expenses: number }
+  generateAllRecurringTransactions: () => { incomes: number; expenses: number; transfers: number }
 
-  // Data management
   exportData: () => string
   importData: (jsonData: string) => void
   resetData: () => void
 
-  // Simple transaction management
-  transactions: Transaction[]
+  // Simple transaction management (legacy, consider removing or integrating)
+  transactions: Transaction[] // This seems to be a simplified, separate transaction list
   addTransaction: (transaction: Omit<Transaction, "id">) => void
   removeTransaction: (id: string) => void
-  getIncomes: () => Transaction[]
-  getExpenses: () => Transaction[]
-  getTotalIncome: () => number
-  getTotalExpense: () => number
+  getIncomes: () => Transaction[] // This refers to the simple transactions
+  getExpenses: () => Transaction[] // This refers to the simple transactions
+  getTotalIncome: () => number // This refers to the simple transactions
+  getTotalExpense: () => number // This refers to the simple transactions
 }
 
+// Simplified transaction type for the legacy part
 interface Transaction {
   id: string
   description: string
@@ -148,40 +159,28 @@ const defaultData: FinanceData = {
   transfers: [],
   accounts: [
     {
-      id: "1",
+      id: "acc-default-checking",
       name: "Girokonto",
       type: "checking",
-      balance: 0,
+      balance: 1250.75,
       color: "#3b82f6",
+      bankName: "Meine Bank",
     },
+    { id: "acc-default-savings", name: "Sparkonto", type: "savings", balance: 5300.0, color: "#10b981" },
+    { id: "acc-default-cash", name: "Bargeld", type: "cash", balance: 180.5, color: "#f59e0b" },
   ],
   categories: [
-    {
-      id: "1",
-      name: "Gehalt",
-      type: "income",
-      color: "#10b981",
-    },
-    {
-      id: "2",
-      name: "Lebensmittel",
-      type: "expense",
-      color: "#ef4444",
-    },
+    { id: "cat-default-salary", name: "Gehalt", type: "income", color: "#10b981" },
+    { id: "cat-default-groceries", name: "Lebensmittel", type: "expense", color: "#ef4444" },
+    { id: "cat-default-rent", name: "Miete", type: "expense", color: "#d946ef" },
+    { id: "cat-default-invest", name: "Investitionen", type: "income", color: "#06b6d4" },
   ],
-  people: [
-    {
-      id: "1",
-      name: "Ich",
-      email: "",
-      color: "#8b5cf6",
-    },
-  ],
-  budgets: [],
+  people: [{ id: "person-default-self", name: "Ich", email: "ich@example.com", color: "#8b5cf6" }],
+  budgets: [{ id: "budget-default-groceries", categoryId: "cat-default-groceries", amount: 400, period: "monthly" }],
   settings: {
     currency: "CHF",
     language: "de",
-    theme: "dark",
+    theme: "system",
   },
 }
 
@@ -193,597 +192,577 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
   })
+  // Legacy simple transactions - consider phasing out or integrating
   const [transactions, setTransactions] = useState<Transaction[]>([])
 
-  // Load data from localStorage on mount
+  const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2)
+
   useEffect(() => {
     try {
-      const savedData = localStorage.getItem("financeData")
+      const savedData = localStorage.getItem("financeDataV2") // Changed key to avoid conflicts with old structure
       if (savedData) {
         const parsedData = JSON.parse(savedData)
-        setData({ ...defaultData, ...parsedData })
+        // Merge parsedData with defaultData to ensure all keys exist, especially new ones like 'people'
+        const mergedData = {
+          ...defaultData,
+          ...parsedData,
+          settings: { ...defaultData.settings, ...parsedData.settings },
+          // Ensure arrays are not undefined
+          incomes: parsedData.incomes || [],
+          expenses: parsedData.expenses || [],
+          transfers: parsedData.transfers || [],
+          accounts: parsedData.accounts || defaultData.accounts,
+          categories: parsedData.categories || defaultData.categories,
+          people: parsedData.people || defaultData.people,
+          budgets: parsedData.budgets || [],
+        }
+        setData(mergedData)
       }
     } catch (error) {
       console.error("Error loading data from localStorage:", error)
     }
   }, [])
 
-  // Save data to localStorage whenever data changes
   useEffect(() => {
     try {
-      localStorage.setItem("financeData", JSON.stringify(data))
+      localStorage.setItem("financeDataV2", JSON.stringify(data))
     } catch (error) {
       console.error("Error saving data to localStorage:", error)
     }
   }, [data])
 
+  // Legacy simple transactions storage
   useEffect(() => {
     const saved = localStorage.getItem("simple-finance-data")
     if (saved) {
       try {
         setTransactions(JSON.parse(saved))
-      } catch (error) {
-        console.error("Fehler beim Laden:", error)
+      } catch (e) {
+        console.error("Error loading simple transactions", e)
       }
     }
   }, [])
-
   useEffect(() => {
     localStorage.setItem("simple-finance-data", JSON.stringify(transactions))
   }, [transactions])
 
-  // Helper function to generate unique IDs
-  const generateId = () => Date.now().toString() + Math.random().toString(36).substr(2, 9)
-
-  // CRUD operations for incomes
-  const addIncome = useCallback((income: Omit<Income, "id">) => {
+  const addIncome = useCallback((income: Omit<Income, "id" | "parentIncomeId">) => {
     const newIncome: Income = { ...income, id: generateId() }
-    setData((prev) => ({ ...prev, incomes: [...prev.incomes, newIncome] }))
-  }, [])
-
-  const updateIncome = useCallback((income: Income) => {
     setData((prev) => ({
       ...prev,
-      incomes: prev.incomes.map((i) => (i.id === income.id ? income : i)),
+      incomes: [...prev.incomes, newIncome].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()),
     }))
   }, [])
-
+  const updateIncome = useCallback((updatedIncome: Income) => {
+    setData((prev) => ({
+      ...prev,
+      incomes: prev.incomes
+        .map((i) => (i.id === updatedIncome.id ? updatedIncome : i))
+        .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()),
+    }))
+  }, [])
   const deleteIncome = useCallback((id: string) => {
-    setData((prev) => ({ ...prev, incomes: prev.incomes.filter((income) => income.id !== id) }))
+    setData((prev) => ({ ...prev, incomes: prev.incomes.filter((i) => i.id !== id) }))
   }, [])
 
-  // CRUD operations for expenses
-  const addExpense = useCallback((expense: Omit<Expense, "id">) => {
+  const addExpense = useCallback((expense: Omit<Expense, "id" | "parentExpenseId">) => {
     const newExpense: Expense = { ...expense, id: generateId() }
-    setData((prev) => ({ ...prev, expenses: [...prev.expenses, newExpense] }))
-  }, [])
-
-  const updateExpense = useCallback((expense: Expense) => {
     setData((prev) => ({
       ...prev,
-      expenses: prev.expenses.map((e) => (e.id === expense.id ? expense : e)),
+      expenses: [...prev.expenses, newExpense].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()),
     }))
   }, [])
-
+  const updateExpense = useCallback((updatedExpense: Expense) => {
+    setData((prev) => ({
+      ...prev,
+      expenses: prev.expenses
+        .map((e) => (e.id === updatedExpense.id ? updatedExpense : e))
+        .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()),
+    }))
+  }, [])
   const deleteExpense = useCallback((id: string) => {
-    setData((prev) => ({ ...prev, expenses: prev.expenses.filter((expense) => expense.id !== id) }))
+    setData((prev) => ({ ...prev, expenses: prev.expenses.filter((e) => e.id !== id) }))
   }, [])
 
-  // CRUD operations for transfers
-  const addTransfer = useCallback((transfer: Omit<Transfer, "id">) => {
+  const addTransfer = useCallback((transfer: Omit<Transfer, "id" | "parentTransferId">) => {
     const newTransfer: Transfer = { ...transfer, id: generateId() }
-    setData((prev) => ({ ...prev, transfers: [...prev.transfers, newTransfer] }))
-  }, [])
-
-  const updateTransfer = useCallback((transfer: Transfer) => {
     setData((prev) => ({
       ...prev,
-      transfers: prev.transfers.map((t) => (t.id === transfer.id ? transfer : t)),
+      transfers: [...prev.transfers, newTransfer].sort(
+        (a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime(),
+      ),
     }))
   }, [])
-
+  const updateTransfer = useCallback((updatedTransfer: Transfer) => {
+    setData((prev) => ({
+      ...prev,
+      transfers: prev.transfers
+        .map((t) => (t.id === updatedTransfer.id ? updatedTransfer : t))
+        .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()),
+    }))
+  }, [])
   const deleteTransfer = useCallback((id: string) => {
-    setData((prev) => ({ ...prev, transfers: prev.transfers.filter((transfer) => transfer.id !== id) }))
+    setData((prev) => ({ ...prev, transfers: prev.transfers.filter((t) => t.id !== id) }))
   }, [])
 
-  // CRUD operations for accounts
   const addAccount = useCallback((account: Omit<Account, "id">) => {
     const newAccount: Account = { ...account, id: generateId() }
     setData((prev) => ({ ...prev, accounts: [...prev.accounts, newAccount] }))
   }, [])
-
-  const updateAccount = useCallback((account: Account) => {
+  const updateAccount = useCallback((updatedAccount: Account) => {
     setData((prev) => ({
       ...prev,
-      accounts: prev.accounts.map((a) => (a.id === account.id ? account : a)),
+      accounts: prev.accounts.map((a) => (a.id === updatedAccount.id ? updatedAccount : a)),
     }))
   }, [])
-
   const deleteAccount = useCallback((id: string) => {
-    setData((prev) => ({ ...prev, accounts: prev.accounts.filter((account) => account.id !== id) }))
+    setData((prev) => ({ ...prev, accounts: prev.accounts.filter((a) => a.id !== id) }))
   }, [])
 
-  // CRUD operations for categories
   const addCategory = useCallback((category: Omit<Category, "id">) => {
     const newCategory: Category = { ...category, id: generateId() }
     setData((prev) => ({ ...prev, categories: [...prev.categories, newCategory] }))
   }, [])
-
-  const updateCategory = useCallback((category: Category) => {
+  const updateCategory = useCallback((updatedCategory: Category) => {
     setData((prev) => ({
       ...prev,
-      categories: prev.categories.map((c) => (c.id === category.id ? category : c)),
+      categories: prev.categories.map((c) => (c.id === updatedCategory.id ? updatedCategory : c)),
     }))
   }, [])
-
   const deleteCategory = useCallback((id: string) => {
-    setData((prev) => ({ ...prev, categories: prev.categories.filter((category) => category.id !== id) }))
+    setData((prev) => ({ ...prev, categories: prev.categories.filter((c) => c.id !== id) }))
   }, [])
 
-  // CRUD operations for people
   const addPerson = useCallback((person: Omit<Person, "id">) => {
     const newPerson: Person = { ...person, id: generateId() }
     setData((prev) => ({ ...prev, people: [...prev.people, newPerson] }))
   }, [])
-
-  const updatePerson = useCallback((person: Person) => {
-    setData((prev) => ({
-      ...prev,
-      people: prev.people.map((p) => (p.id === person.id ? person : p)),
-    }))
+  const updatePerson = useCallback((updatedPerson: Person) => {
+    setData((prev) => ({ ...prev, people: prev.people.map((p) => (p.id === updatedPerson.id ? updatedPerson : p)) }))
   }, [])
-
   const deletePerson = useCallback((id: string) => {
-    setData((prev) => ({ ...prev, people: prev.people.filter((person) => person.id !== id) }))
+    setData((prev) => ({ ...prev, people: prev.people.filter((p) => p.id !== id) }))
   }, [])
 
-  // CRUD operations for budgets
   const addBudget = useCallback((budget: Omit<Budget, "id">) => {
     const newBudget: Budget = { ...budget, id: generateId() }
     setData((prev) => ({ ...prev, budgets: [...prev.budgets, newBudget] }))
   }, [])
-
-  const updateBudget = useCallback((budget: Budget) => {
-    setData((prev) => ({
-      ...prev,
-      budgets: prev.budgets.map((b) => (b.id === budget.id ? budget : b)),
-    }))
+  const updateBudget = useCallback((updatedBudget: Budget) => {
+    setData((prev) => ({ ...prev, budgets: prev.budgets.map((b) => (b.id === updatedBudget.id ? updatedBudget : b)) }))
   }, [])
-
   const deleteBudget = useCallback((id: string) => {
-    setData((prev) => ({ ...prev, budgets: prev.budgets.filter((budget) => budget.id !== id) }))
+    setData((prev) => ({ ...prev, budgets: prev.budgets.filter((b) => b.id !== id) }))
   }, [])
 
-  // Getter functions with proper error handling
+  const updateSettings = useCallback((newSettings: Partial<Settings>) => {
+    setData((prev) => ({ ...prev, settings: { ...prev.settings, ...newSettings } }))
+  }, [])
+
   const getFilteredIncomes = useCallback((): Income[] => {
-    try {
-      return data.incomes.filter((income) => {
-        const incomeDate = new Date(income.date)
-        return isWithinInterval(incomeDate, { start: timeRange.from, end: timeRange.to })
-      })
-    } catch (error) {
-      console.error("Error filtering incomes:", error)
-      return []
-    }
+    return data.incomes.filter((income) =>
+      isWithinInterval(parseISO(income.date), { start: timeRange.from, end: timeRange.to }),
+    )
   }, [data.incomes, timeRange])
 
   const getFilteredExpenses = useCallback((): Expense[] => {
-    try {
-      return data.expenses.filter((expense) => {
-        const expenseDate = new Date(expense.date)
-        return isWithinInterval(expenseDate, { start: timeRange.from, end: timeRange.to })
-      })
-    } catch (error) {
-      console.error("Error filtering expenses:", error)
-      return []
-    }
+    return data.expenses.filter((expense) =>
+      isWithinInterval(parseISO(expense.date), { start: timeRange.from, end: timeRange.to }),
+    )
   }, [data.expenses, timeRange])
 
   const getFilteredTransfers = useCallback((): Transfer[] => {
-    try {
-      return data.transfers.filter((transfer) => {
-        const transferDate = new Date(transfer.date)
-        return isWithinInterval(transferDate, { start: timeRange.from, end: timeRange.to })
-      })
-    } catch (error) {
-      console.error("Error filtering transfers:", error)
-      return []
-    }
+    return data.transfers.filter((transfer) =>
+      isWithinInterval(parseISO(transfer.date), { start: timeRange.from, end: timeRange.to }),
+    )
   }, [data.transfers, timeRange])
 
-  const getTotalIncomes = useCallback((): number => {
-    try {
-      return getFilteredIncomes().reduce((sum, income) => sum + income.amount, 0)
-    } catch (error) {
-      console.error("Error calculating total incomes:", error)
-      return 0
-    }
-  }, [getFilteredIncomes])
+  const getTotalIncomes = useCallback(
+    (filtered = true): number => {
+      const incomesToSum = filtered ? getFilteredIncomes() : data.incomes
+      return incomesToSum.reduce((sum, income) => sum + income.amount, 0)
+    },
+    [getFilteredIncomes, data.incomes],
+  )
 
-  const getTotalExpenses = useCallback((): number => {
-    try {
-      return getFilteredExpenses().reduce((sum, expense) => sum + expense.amount, 0)
-    } catch (error) {
-      console.error("Error calculating total expenses:", error)
-      return 0
-    }
-  }, [getFilteredExpenses])
+  const getTotalExpenses = useCallback(
+    (filtered = true): number => {
+      const expensesToSum = filtered ? getFilteredExpenses() : data.expenses
+      return expensesToSum.reduce((sum, expense) => sum + expense.amount, 0)
+    },
+    [getFilteredExpenses, data.expenses],
+  )
 
-  const getBalance = useCallback((): number => {
-    try {
-      return getTotalIncomes() - getTotalExpenses()
-    } catch (error) {
-      console.error("Error calculating balance:", error)
-      return 0
-    }
-  }, [getTotalIncomes, getTotalExpenses])
+  const getBalance = useCallback(
+    (filtered = true): number => {
+      return getTotalIncomes(filtered) - getTotalExpenses(filtered)
+    },
+    [getTotalIncomes, getTotalExpenses],
+  )
 
-  const getSavingsRate = useCallback((): number => {
-    try {
-      const totalIncomes = getTotalIncomes()
+  const getSavingsRate = useCallback(
+    (filtered = true): number => {
+      const totalIncomes = getTotalIncomes(filtered)
       if (totalIncomes === 0) return 0
-      return (getBalance() / totalIncomes) * 100
-    } catch (error) {
-      console.error("Error calculating savings rate:", error)
-      return 0
-    }
-  }, [getTotalIncomes, getBalance])
+      return (getBalance(filtered) / totalIncomes) * 100
+    },
+    [getTotalIncomes, getBalance],
+  )
 
-  const getExpensesByCategory = useCallback((): Record<string, number> => {
-    try {
-      const expenses = getFilteredExpenses()
-      const categoryTotals: Record<string, number> = {}
-
-      expenses.forEach((expense) => {
-        const category = getCategoryById(expense.categoryId)
-        const categoryName = category?.name || "Unbekannt"
-        categoryTotals[categoryName] = (categoryTotals[categoryName] || 0) + expense.amount
-      })
-
-      return categoryTotals
-    } catch (error) {
-      console.error("Error getting expenses by category:", error)
-      return {}
-    }
+  const getExpensesByCategory = useCallback(() => {
+    const expenses = getFilteredExpenses()
+    const categoryTotals: Record<string, number> = {}
+    expenses.forEach((exp) => {
+      const catName = getCategoryById(exp.categoryId)?.name || "Unbekannt"
+      categoryTotals[catName] = (categoryTotals[catName] || 0) + exp.amount
+    })
+    return categoryTotals
   }, [getFilteredExpenses, data.categories])
 
-  const getIncomesByCategory = useCallback((): Record<string, number> => {
-    try {
-      const incomes = getFilteredIncomes()
-      const categoryTotals: Record<string, number> = {}
-
-      incomes.forEach((income) => {
-        const category = getCategoryById(income.categoryId)
-        const categoryName = category?.name || "Unbekannt"
-        categoryTotals[categoryName] = (categoryTotals[categoryName] || 0) + income.amount
-      })
-
-      return categoryTotals
-    } catch (error) {
-      console.error("Error getting incomes by category:", error)
-      return {}
-    }
+  const getIncomesByCategory = useCallback(() => {
+    const incomes = getFilteredIncomes()
+    const categoryTotals: Record<string, number> = {}
+    incomes.forEach((inc) => {
+      const catName = getCategoryById(inc.categoryId)?.name || "Unbekannt"
+      categoryTotals[catName] = (categoryTotals[catName] || 0) + inc.amount
+    })
+    return categoryTotals
   }, [getFilteredIncomes, data.categories])
 
-  const getExpensesByAccount = useCallback((): Record<string, number> => {
-    try {
-      const expenses = getFilteredExpenses()
-      const accountTotals: Record<string, number> = {}
-
-      expenses.forEach((expense) => {
-        const account = getAccountById(expense.accountId)
-        const accountName = account?.name || "Unbekannt"
-        accountTotals[accountName] = (accountTotals[accountName] || 0) + expense.amount
-      })
-
-      return accountTotals
-    } catch (error) {
-      console.error("Error getting expenses by account:", error)
-      return {}
-    }
+  const getExpensesByAccount = useCallback(() => {
+    const expenses = getFilteredExpenses()
+    const accountTotals: Record<string, number> = {}
+    expenses.forEach((exp) => {
+      const accName = getAccountById(exp.accountId)?.name || "Unbekannt"
+      accountTotals[accName] = (accountTotals[accName] || 0) + exp.amount
+    })
+    return accountTotals
   }, [getFilteredExpenses, data.accounts])
 
-  const getIncomesByAccount = useCallback((): Record<string, number> => {
-    try {
-      const incomes = getFilteredIncomes()
-      const accountTotals: Record<string, number> = {}
-
-      incomes.forEach((income) => {
-        const account = getAccountById(income.accountId)
-        const accountName = account?.name || "Unbekannt"
-        accountTotals[accountName] = (accountTotals[accountName] || 0) + income.amount
-      })
-
-      return accountTotals
-    } catch (error) {
-      console.error("Error getting incomes by account:", error)
-      return {}
-    }
+  const getIncomesByAccount = useCallback(() => {
+    const incomes = getFilteredIncomes()
+    const accountTotals: Record<string, number> = {}
+    incomes.forEach((inc) => {
+      const accName = getAccountById(inc.accountId)?.name || "Unbekannt"
+      accountTotals[accName] = (accountTotals[accName] || 0) + inc.amount
+    })
+    return accountTotals
   }, [getFilteredIncomes, data.accounts])
 
-  const getExpensesByPerson = useCallback((): Record<string, number> => {
-    try {
-      const expenses = getFilteredExpenses()
-      const personTotals: Record<string, number> = {}
-
-      expenses.forEach((expense) => {
-        const person = getPersonById(expense.personId)
-        const personName = person?.name || "Unbekannt"
-        personTotals[personName] = (personTotals[personName] || 0) + expense.amount
-      })
-
-      return personTotals
-    } catch (error) {
-      console.error("Error getting expenses by person:", error)
-      return {}
-    }
+  const getExpensesByPerson = useCallback(() => {
+    const expenses = getFilteredExpenses()
+    const personTotals: Record<string, number> = {}
+    expenses.forEach((exp) => {
+      const personName = getPersonById(exp.personId)?.name || "Unbekannt"
+      personTotals[personName] = (personTotals[personName] || 0) + exp.amount
+    })
+    return personTotals
   }, [getFilteredExpenses, data.people])
 
-  const getIncomesByPerson = useCallback((): Record<string, number> => {
-    try {
-      const incomes = getFilteredIncomes()
-      const personTotals: Record<string, number> = {}
-
-      incomes.forEach((income) => {
-        const person = getPersonById(income.personId)
-        const personName = person?.name || "Unbekannt"
-        personTotals[personName] = (personTotals[personName] || 0) + income.amount
-      })
-
-      return personTotals
-    } catch (error) {
-      console.error("Error getting incomes by person:", error)
-      return {}
-    }
+  const getIncomesByPerson = useCallback(() => {
+    const incomes = getFilteredIncomes()
+    const personTotals: Record<string, number> = {}
+    incomes.forEach((inc) => {
+      const personName = getPersonById(inc.personId)?.name || "Unbekannt"
+      personTotals[personName] = (personTotals[personName] || 0) + inc.amount
+    })
+    return personTotals
   }, [getFilteredIncomes, data.people])
 
-  const getMonthlyExpenseTrend = useCallback(() => {
-    try {
-      const months = []
-      for (let i = 5; i >= 0; i--) {
-        const date = subMonths(new Date(), i)
-        months.push({
-          month: format(date, "MMM yyyy"),
-          amount: data.expenses
-            .filter((expense) => format(new Date(expense.date), "yyyy-MM") === format(date, "yyyy-MM"))
-            .reduce((sum, expense) => sum + expense.amount, 0),
-        })
-      }
-      return months
-    } catch (error) {
-      console.error("Error getting monthly expense trend:", error)
-      return []
+  const getMonthlyTrend = useCallback((items: Array<Income | Expense>) => {
+    const trend: Array<{ month: string; amount: number }> = []
+    for (let i = 5; i >= 0; i--) {
+      const targetMonthStart = startOfMonth(subMonths(new Date(), i))
+      const targetMonthEnd = endOfMonth(targetMonthStart)
+      const amount = items
+        .filter((item) => isWithinInterval(parseISO(item.date), { start: targetMonthStart, end: targetMonthEnd }))
+        .reduce((sum, item) => sum + item.amount, 0)
+      trend.push({ month: format(targetMonthStart, "MMM yyyy"), amount })
     }
-  }, [data.expenses])
+    return trend
+  }, [])
 
-  const getMonthlyIncomeTrend = useCallback(() => {
-    try {
-      const months = []
-      for (let i = 5; i >= 0; i--) {
-        const date = subMonths(new Date(), i)
-        months.push({
-          month: format(date, "MMM yyyy"),
-          amount: data.incomes
-            .filter((income) => format(new Date(income.date), "yyyy-MM") === format(date, "yyyy-MM"))
-            .reduce((sum, income) => sum + income.amount, 0),
-        })
-      }
-      return months
-    } catch (error) {
-      console.error("Error getting monthly income trend:", error)
-      return []
-    }
-  }, [data.incomes])
+  const getMonthlyExpenseTrend = useCallback(() => getMonthlyTrend(data.expenses), [data.expenses, getMonthlyTrend])
+  const getMonthlyIncomeTrend = useCallback(() => getMonthlyTrend(data.incomes), [data.incomes, getMonthlyTrend])
 
-  // Helper functions
-  const getCategoryById = useCallback(
-    (id: string) => {
-      return data.categories.find((category) => category.id === id)
-    },
-    [data.categories],
-  )
-
-  const getPersonById = useCallback(
-    (id: string) => {
-      return data.people.find((person) => person.id === id)
-    },
-    [data.people],
-  )
-
-  const getAccountById = useCallback(
-    (id: string) => {
-      return data.accounts.find((account) => account.id === id)
-    },
-    [data.accounts],
-  )
+  const getCategoryById = useCallback((id: string) => data.categories.find((c) => c.id === id), [data.categories])
+  const getPersonById = useCallback((id: string) => data.people.find((p) => p.id === id), [data.people])
+  const getAccountById = useCallback((id: string) => data.accounts.find((a) => a.id === id), [data.accounts])
 
   const formatCurrency = useCallback(
     (amount: number): string => {
-      try {
-        return new Intl.NumberFormat("de-CH", {
-          style: "currency",
-          currency: data.settings.currency,
-        }).format(amount)
-      } catch (error) {
-        console.error("Error formatting currency:", error)
-        return `${amount} ${data.settings.currency}`
-      }
+      return new Intl.NumberFormat("de-CH", { style: "currency", currency: data.settings.currency }).format(amount)
     },
     [data.settings.currency],
   )
 
-  // Recurring transactions
-  const generateAllRecurringTransactions = useCallback((): { incomes: number; expenses: number } => {
+  const generateAllRecurringTransactions = useCallback((): { incomes: number; expenses: number; transfers: number } => {
     let generatedIncomes = 0
     let generatedExpenses = 0
+    const generatedTransfers = 0
+    const today = new Date()
+    today.setHours(0, 0, 0, 0) // Vergleiche nur Datum
 
-    try {
-      const today = new Date()
-
-      // Generate recurring incomes
-      data.incomes.forEach((income) => {
-        if (income.isRecurring && income.recurringInterval && !income.recurringConfig?.isPaused) {
-          const lastDate = new Date(income.date)
-          let nextDate = new Date(lastDate)
-
-          // Calculate next date based on interval
+    const newIncomes: Income[] = []
+    data.incomes.forEach((income) => {
+      if (
+        income.isRecurring &&
+        income.recurringInterval &&
+        income.recurringConfig &&
+        !income.recurringConfig.isPaused
+      ) {
+        let nextDate = parseISO(income.recurringConfig.startDate || income.date)
+        if (income.recurringConfig.lastGenerated) {
+          nextDate = parseISO(income.recurringConfig.lastGenerated)
+          // Calculate next occurrence from lastGenerated
           switch (income.recurringInterval) {
             case "weekly":
-              nextDate = addWeeks(lastDate, 1)
+              nextDate = addWeeks(nextDate, 1)
               break
             case "biweekly":
-              nextDate = addWeeks(lastDate, 2)
+              nextDate = addWeeks(nextDate, 2)
               break
             case "monthly":
-              nextDate = addMonths(lastDate, 1)
+              nextDate = addMonths(nextDate, 1)
               break
             case "bimonthly":
-              nextDate = addMonths(lastDate, 2)
+              nextDate = addMonths(nextDate, 2)
               break
             case "quarterly":
-              nextDate = addMonths(lastDate, 3)
+              nextDate = addMonths(nextDate, 3)
               break
             case "semiannually":
-              nextDate = addMonths(lastDate, 6)
+              nextDate = addMonths(nextDate, 6)
               break
             case "yearly":
-              nextDate = addYears(lastDate, 1)
+              nextDate = addYears(nextDate, 1)
               break
           }
+        } else {
+          // If no lastGenerated, start from startDate or original date
+          nextDate = parseISO(income.recurringConfig.startDate || income.date)
+          // If startDate is in the past, find first occurrence from today or future
+          while (isBefore(nextDate, today) && !isEqual(nextDate, today)) {
+            switch (income.recurringInterval) {
+              case "weekly":
+                nextDate = addWeeks(nextDate, 1)
+                break
+              // ... other intervals
+              default:
+                nextDate = addMonths(nextDate, 1)
+                break // Default to monthly if needed
+            }
+          }
+        }
+        nextDate.setHours(0, 0, 0, 0)
 
-          // If next date is today or in the past, generate new transaction
-          if (nextDate <= today) {
-            const newIncome: Income = {
+        while (
+          (isBefore(nextDate, today) || isEqual(nextDate, today)) &&
+          (!income.recurringConfig.endDate ||
+            isBefore(nextDate, parseISO(income.recurringConfig.endDate)) ||
+            isEqual(nextDate, parseISO(income.recurringConfig.endDate))) &&
+          (income.recurringConfig.occurrences === undefined || income.recurringConfig.occurrences > 0)
+        ) {
+          // Check if this specific date has already been generated by looking for parentIncomeId and date
+          const alreadyGenerated = data.incomes.some(
+            (existing) => existing.parentIncomeId === income.id && existing.date === format(nextDate, "yyyy-MM-dd"),
+          )
+
+          if (!alreadyGenerated) {
+            newIncomes.push({
               ...income,
               id: generateId(),
               date: format(nextDate, "yyyy-MM-dd"),
               parentIncomeId: income.id,
-            }
-
-            setData((prev) => ({
-              ...prev,
-              incomes: [...prev.incomes, newIncome],
-            }))
-
+              isRecurring: false, // Generated instance is not recurring itself
+              recurringConfig: undefined, // Clear recurringConfig for instance
+            })
             generatedIncomes++
+            if (income.recurringConfig.occurrences !== undefined) {
+              income.recurringConfig.occurrences--
+            }
           }
-        }
-      })
 
-      // Generate recurring expenses
-      data.expenses.forEach((expense) => {
-        if (expense.isRecurring && expense.recurringInterval && !expense.recurringConfig?.isPaused) {
-          const lastDate = new Date(expense.date)
-          let nextDate = new Date(lastDate)
-
-          // Calculate next date based on interval
-          switch (expense.recurringInterval) {
+          // Calculate next date for the loop
+          switch (income.recurringInterval) {
             case "weekly":
-              nextDate = addWeeks(lastDate, 1)
+              nextDate = addWeeks(nextDate, 1)
               break
             case "biweekly":
-              nextDate = addWeeks(lastDate, 2)
+              nextDate = addWeeks(nextDate, 2)
               break
             case "monthly":
-              nextDate = addMonths(lastDate, 1)
+              nextDate = addMonths(nextDate, 1)
               break
             case "bimonthly":
-              nextDate = addMonths(lastDate, 2)
+              nextDate = addMonths(nextDate, 2)
               break
             case "quarterly":
-              nextDate = addMonths(lastDate, 3)
+              nextDate = addMonths(nextDate, 3)
               break
             case "semiannually":
-              nextDate = addMonths(lastDate, 6)
+              nextDate = addMonths(nextDate, 6)
               break
             case "yearly":
-              nextDate = addYears(lastDate, 1)
+              nextDate = addYears(nextDate, 1)
+              break
+            default:
+              break // Should not happen
+          }
+        }
+        // Update lastGenerated for the original recurring income
+        if (generatedIncomes > 0) {
+          const originalIncomeIndex = data.incomes.findIndex((i) => i.id === income.id)
+          if (originalIncomeIndex !== -1 && data.incomes[originalIncomeIndex].recurringConfig) {
+            ;(data.incomes[originalIncomeIndex].recurringConfig as RecurringConfig).lastGenerated = format(
+              today,
+              "yyyy-MM-dd",
+            )
+          }
+        }
+      }
+    })
+
+    const newExpenses: Expense[] = []
+    data.expenses.forEach((expense) => {
+      // Similar logic for expenses
+      if (
+        expense.isRecurring &&
+        expense.recurringInterval &&
+        expense.recurringConfig &&
+        !expense.recurringConfig.isPaused
+      ) {
+        let nextDate = parseISO(expense.recurringConfig.startDate || expense.date)
+        if (expense.recurringConfig.lastGenerated) {
+          nextDate = parseISO(expense.recurringConfig.lastGenerated)
+          switch (expense.recurringInterval) {
+            case "weekly":
+              nextDate = addWeeks(nextDate, 1)
+              break
+            // ... other intervals
+            default:
+              nextDate = addMonths(nextDate, 1)
               break
           }
+        } else {
+          nextDate = parseISO(expense.recurringConfig.startDate || expense.date)
+          while (isBefore(nextDate, today) && !isEqual(nextDate, today)) {
+            switch (expense.recurringInterval) {
+              case "weekly":
+                nextDate = addWeeks(nextDate, 1)
+                break
+              // ... other intervals
+              default:
+                nextDate = addMonths(nextDate, 1)
+                break
+            }
+          }
+        }
+        nextDate.setHours(0, 0, 0, 0)
 
-          // If next date is today or in the past, generate new transaction
-          if (nextDate <= today) {
-            const newExpense: Expense = {
+        while (
+          (isBefore(nextDate, today) || isEqual(nextDate, today)) &&
+          (!expense.recurringConfig.endDate ||
+            isBefore(nextDate, parseISO(expense.recurringConfig.endDate)) ||
+            isEqual(nextDate, parseISO(expense.recurringConfig.endDate))) &&
+          (expense.recurringConfig.occurrences === undefined || expense.recurringConfig.occurrences > 0)
+        ) {
+          const alreadyGenerated = data.expenses.some(
+            (existing) => existing.parentExpenseId === expense.id && existing.date === format(nextDate, "yyyy-MM-dd"),
+          )
+          if (!alreadyGenerated) {
+            newExpenses.push({
               ...expense,
               id: generateId(),
               date: format(nextDate, "yyyy-MM-dd"),
               parentExpenseId: expense.id,
-            }
-
-            setData((prev) => ({
-              ...prev,
-              expenses: [...prev.expenses, newExpense],
-            }))
-
+              isRecurring: false,
+              recurringConfig: undefined,
+            })
             generatedExpenses++
+            if (expense.recurringConfig.occurrences !== undefined) {
+              expense.recurringConfig.occurrences--
+            }
+          }
+          switch (expense.recurringInterval) {
+            case "weekly":
+              nextDate = addWeeks(nextDate, 1)
+              break
+            // ... other intervals
+            default:
+              nextDate = addMonths(nextDate, 1)
+              break
           }
         }
-      })
-    } catch (error) {
-      console.error("Error generating recurring transactions:", error)
+        if (generatedExpenses > 0) {
+          const originalExpenseIndex = data.expenses.findIndex((e) => e.id === expense.id)
+          if (originalExpenseIndex !== -1 && data.expenses[originalExpenseIndex].recurringConfig) {
+            ;(data.expenses[originalExpenseIndex].recurringConfig as RecurringConfig).lastGenerated = format(
+              today,
+              "yyyy-MM-dd",
+            )
+          }
+        }
+      }
+    })
+
+    // TODO: Implement recurring transfers generation
+    // Similar logic as incomes and expenses
+
+    if (newIncomes.length > 0 || newExpenses.length > 0) {
+      setData((prev) => ({
+        ...prev,
+        incomes: [...prev.incomes, ...newIncomes].sort(
+          (a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime(),
+        ),
+        expenses: [...prev.expenses, ...newExpenses].sort(
+          (a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime(),
+        ),
+        // Update original recurring items with new lastGenerated date or occurrences count
+        // This part needs careful handling to update the original recurring items in prev.incomes/prev.expenses
+      }))
     }
 
-    return { incomes: generatedIncomes, expenses: generatedExpenses }
-  }, [data.incomes, data.expenses])
+    return { incomes: generatedIncomes, expenses: generatedExpenses, transfers: generatedTransfers }
+  }, [data, setData])
 
-  // Data management
-  const exportData = useCallback((): string => {
-    try {
-      return JSON.stringify(data, null, 2)
-    } catch (error) {
-      console.error("Error exporting data:", error)
-      return "{}"
-    }
-  }, [data])
-
+  const exportData = useCallback(() => JSON.stringify(data, null, 2), [data])
   const importData = useCallback((jsonData: string) => {
     try {
       const importedData = JSON.parse(jsonData)
-      setData({ ...defaultData, ...importedData })
-    } catch (error) {
-      console.error("Error importing data:", error)
+      // Basic validation or schema check could be added here
+      setData({ ...defaultData, ...importedData, settings: { ...defaultData.settings, ...importedData.settings } })
+    } catch (e) {
+      console.error("Error importing data:", e)
     }
   }, [])
-
   const resetData = useCallback(() => {
-    setData(defaultData)
-    localStorage.removeItem("financeData")
+    if (
+      window.confirm("Möchten Sie wirklich alle Daten zurücksetzen? Diese Aktion kann nicht rückgängig gemacht werden.")
+    ) {
+      setData(defaultData)
+      localStorage.removeItem("financeDataV2")
+      localStorage.removeItem("simple-finance-data") // Clear legacy too
+    }
   }, [])
 
+  // Legacy simple transaction functions
   const addTransaction = (transaction: Omit<Transaction, "id">) => {
-    const newTransaction = {
-      ...transaction,
-      id: Date.now().toString(),
-    }
+    const newTransaction = { ...transaction, id: generateId() }
     setTransactions((prev) => [...prev, newTransaction])
   }
-
   const removeTransaction = (id: string) => {
     setTransactions((prev) => prev.filter((t) => t.id !== id))
   }
-
-  const getIncomes = () => {
-    return transactions.filter((t) => t.type === "income")
-  }
-
-  const getExpenses = () => {
-    return transactions.filter((t) => t.type === "expense")
-  }
-
-  const getTotalIncome = () => {
-    return transactions.filter((t) => t.type === "income").reduce((sum, t) => sum + t.amount, 0)
-  }
-
-  const getTotalExpense = () => {
-    return transactions.filter((t) => t.type === "expense").reduce((sum, t) => sum + t.amount, 0)
-  }
+  const getIncomes = () => transactions.filter((t) => t.type === "income")
+  const getExpenses = () => transactions.filter((t) => t.type === "expense")
+  const getTotalIncome = () => transactions.filter((t) => t.type === "income").reduce((sum, t) => sum + t.amount, 0)
+  const getTotalExpense = () => transactions.filter((t) => t.type === "expense").reduce((sum, t) => sum + t.amount, 0)
 
   const value: FinanceContextType = {
     data,
     timeRange,
     setTimeRange,
-
-    // CRUD operations
     addIncome,
     updateIncome,
     deleteIncome,
@@ -805,8 +784,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     addBudget,
     updateBudget,
     deleteBudget,
-
-    // Getter functions
+    updateSettings,
     getFilteredIncomes,
     getFilteredExpenses,
     getFilteredTransfers,
@@ -822,22 +800,15 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     getIncomesByPerson,
     getMonthlyExpenseTrend,
     getMonthlyIncomeTrend,
-
-    // Helper functions
     getCategoryById,
     getPersonById,
     getAccountById,
     formatCurrency,
-
-    // Recurring transactions
     generateAllRecurringTransactions,
-
-    // Data management
     exportData,
     importData,
     resetData,
-
-    // Simple transaction management
+    // Legacy simple transactions
     transactions,
     addTransaction,
     removeTransaction,

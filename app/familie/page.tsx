@@ -1,12 +1,6 @@
-import { MainLayout } from "@/components/main-layout"
+"use client"
 import { FamilyManager } from "@/components/family-manager"
 
-export const dynamic = "force-dynamic"
-
-export default function FamilyPage() {
-  return (
-    <MainLayout>
-      <FamilyManager />
-    </MainLayout>
-  )
+export default function FamiliePage() {
+  return <FamilyManager />
 }

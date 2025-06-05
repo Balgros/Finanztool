@@ -1,10 +1,6 @@
-import { MainLayout } from "@/components/main-layout"
+"use client"
 import { PersonManager } from "@/components/person-manager"
 
-export default function PeoplePage() {
-  return (
-    <MainLayout>
-      <PersonManager />
-    </MainLayout>
-  )
+export default function PersonenPage() {
+  return <PersonManager />
 }

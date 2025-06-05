@@ -1,10 +1,6 @@
-import { MainLayout } from "@/components/main-layout"
+"use client"
 import { ExpenseManager } from "@/components/expense-manager"
 
-export default function ExpensesPage() {
-  return (
-    <MainLayout>
-      <ExpenseManager />
-    </MainLayout>
-  )
+export default function AusgabenPage() {
+  return <ExpenseManager />
 }
